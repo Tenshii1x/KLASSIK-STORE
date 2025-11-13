@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Catálogo de Productos</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .product-card:hover { transform: translateY(-4px); }
+        .product-card { transition: all 0.3s; }
+    </style>
+</head>
+<body class="bg-gray-50">
+    <div id="root"></div>
+    <script>
+        const catalogData = {"products":[{"id":1762997068471,"name":"POEDAGAR","price":25,"description":"ASDADAD","image":"https://img.kwcdn.com/product/fancy/08b6ac9d-aff6-4f96-80b4-9e58b3e808eb.jpg?imageView2/2/w/800/q/70/format/webp","imageType":"url","section":"1762997034751","subsection":"HOMBRE","variants":[{"name":"ROSA AZUL","image":"https://img.kwcdn.com/product/fancy/86d90c4c-459f-408d-b828-cef4cf735312.jpg?imageView2/2/w/800/q/70/format/webp","imageType":"url"},{"name":"PLATA","image":"https://img.kwcdn.com/product/fancy/942fd85a-7cc4-4653-bb58-a9a986bd6055.jpg?imageView2/2/w/800/q/70/format/webp","imageType":"url"}]}],"sections":[{"id":1762997034751,"name":"RELOJES","subsections":["HOMBRE"]}],"whatsapp":"50769889285"};
+        
+        let cart = [];
+        let currentSection = null;
+        let currentSubsection = null;
+        let searchTerm = '';
+        let zoomedImage = null;
+
+        function render() {
+            const root = document.getElementById('root');
+            root.innerHTML = `
+                <div class="min-h-screen">
+                    <!-- Header -->
+                    <div class="bg-blue-600 text-white p-4 sticky top-0 z-40 shadow-lg">
+                        <div class="max-w-7xl mx-auto flex justify-between items-center">
+                            <div>
+                                <h1 class="text-2xl font-bold">Klassik Store</h1>
+                                <p class="text-sm opacity-90">Tu tienda de confianza</p>
+                            </div>
+                            <button onclick="toggleCart()" class="relative bg-white text-blue-600 px-4 py-2 rounded-lg font-semibold hover:bg-blue-50">
+                                🛒 Carrito (${cart.length})
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Search and Filters -->
+                    <div class="bg-white shadow-md p-4 sticky top-16 z-30">
+                        <div class="max-w-7xl mx-auto">
+                            <input type="text" 
+                                   placeholder="Buscar productos..." 
+                                   value="${searchTerm}"
+                                   onkeyup="handleSearch(event)"
+                                   class="w-full p-3 border rounded-lg mb-4">
+                            
+                            <div class="flex gap-2 overflow-x-auto pb-2">
+                                <button onclick="filterSection(null)" 
+                                        class="px-4 py-2 rounded-lg whitespace-nowrap ${!currentSection ? 'bg-blue-600 text-white' : 'bg-gray-200'}">
+                                    Todos
+                                </button>
+                                ${catalogData.sections.map(section => `
+                                    <button onclick="filterSection('${section.id}')" 
+                                            class="px-4 py-2 rounded-lg whitespace-nowrap ${currentSection === section.id ? 'bg-blue-600 text-white' : 'bg-gray-200'}">
+                                        ${section.name}
+                                    </button>
+                                `).join('')}
+                            </div>
+
+                            ${currentSection ? `
+                                <div class="flex gap-2 overflow-x-auto mt-2 pb-2">
+                                    <button onclick="filterSubsection(null)" 
+                                            class="px-3 py-1 rounded text-sm whitespace-nowrap ${!currentSubsection ? 'bg-blue-400 text-white' : 'bg-gray-100'}">
+                                        Todas las subcategorías
+                                    </button>
+                                    ${(catalogData.sections.find(s => s.id == currentSection)?.subsections || []).map(sub => `
+                                        <button onclick="filterSubsection('${sub}')" 
+                                                class="px-3 py-1 rounded text-sm whitespace-nowrap ${currentSubsection === sub ? 'bg-blue-400 text-white' : 'bg-gray-100'}">
+                                            ${sub}
+                                        </button>
+                                    `).join('')}
+                                </div>
+                            ` : ''}
+                        </div>
+                    </div>
+
+                    <!-- Products Grid -->
+                    <div class="max-w-7xl mx-auto p-4">
+                        <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                            ${getFilteredProducts().map(product => `
+                                <div class="product-card bg-white rounded-lg shadow-md overflow-hidden">
+                                    <div class="relative cursor-pointer" onclick='zoomImage(${JSON.stringify(product.image)})'>
+                                        <img src="${product.image}" 
+                                             alt="${product.name}" 
+                                             class="w-full h-48 object-cover"
+                                             onerror="this.src='data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22200%22 height=%22200%22%3E%3Crect fill=%22%23ddd%22 width=%22200%22 height=%22200%22/%3E%3Ctext x=%2250%25%22 y=%2250%25%22 text-anchor=%22middle%22 dy=%22.3em%22 fill=%22%23999%22%3ESin imagen%3C/text%3E%3C/svg%3E'">
+                                        <div class="absolute top-2 right-2 bg-white rounded-full p-1">
+                                            🔍
+                                        </div>
+                                    </div>
+                                    <div class="p-3">
+                                        <h3 class="font-semibold text-sm mb-1 line-clamp-2">${product.name}</h3>
+                                        <p class="text-blue-600 font-bold mb-2">$${product.price.toFixed(2)}</p>
+                                        ${product.variants && product.variants.length > 0 ? `
+                                            <div class="mb-2">
+                                                <select id="variantSelect${product.id}" 
+                                                        onchange="changeVariant(${product.id}, this.value)" 
+                                                        class="w-full p-2 border rounded text-sm">
+                                                    <option value="">Seleccionar variante</option>
+                                                    ${product.variants.map((v, idx) => `<option value="${idx}">${v.name || v}</option>`).join('')}
+                                                </select>
+                                            </div>
+                                            <button id="addBtn${product.id}" 
+                                                    onclick='addToCartWithVariant(${product.id})' 
+                                                    disabled
+                                                    class="w-full bg-gray-300 text-gray-500 py-2 rounded text-sm cursor-not-allowed">
+                                                Selecciona una variante
+                                            </button>
+                                        ` : `
+                                            <button onclick='addToCartSimple(${JSON.stringify(product)})' 
+                                                    class="w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700 text-sm">
+                                                Agregar al carrito
+                                            </button>
+                                        `}
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+
+                    <!-- Cart Modal -->
+                    <div id="cartModal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+                        <div class="bg-white rounded-lg max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+                            <div class="p-4 border-b flex justify-between items-center">
+                                <h2 class="text-xl font-bold">Mi Carrito (${cart.length})</h2>
+                                <button onclick="toggleCart()" class="text-2xl">&times;</button>
+                            </div>
+                            <div class="flex-1 overflow-y-auto p-4">
+                                ${cart.length === 0 ? `
+                                    <p class="text-center text-gray-500 py-8">El carrito está vacío</p>
+                                ` : cart.map((item, index) => `
+                                    <div class="flex gap-3 mb-3 p-3 bg-gray-50 rounded">
+                                        <img src="${item.image}" class="w-16 h-16 object-cover rounded" 
+                                             onerror="this.src='data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2264%22 height=%2264%22%3E%3Crect fill=%22%23ddd%22 width=%2264%22 height=%2264%22/%3E%3C/svg%3E'">
+                                        <div class="flex-1">
+                                            <h4 class="font-semibold">${item.name}</h4>
+                                            ${item.variant ? `<p class="text-sm text-gray-600">${item.variant}</p>` : ''}
+                                            <p class="text-blue-600 font-bold">$${item.price.toFixed(2)}</p>
+                                        </div>
+                                        <button onclick="removeFromCart(${index})" class="text-red-600 hover:text-red-800">
+                                            🗑️
+                                        </button>
+                                    </div>
+                                `).join('')}
+                            </div>
+                            ${cart.length > 0 ? `
+                                <div class="p-4 border-t">
+                                    <div class="flex justify-between mb-4">
+                                        <span class="font-bold text-lg">Total:</span>
+                                        <span class="font-bold text-lg text-blue-600">$${cart.reduce((sum, item) => sum + item.price, 0).toFixed(2)}</span>
+                                    </div>
+                                    <button onclick="sendWhatsApp()" 
+                                            class="w-full bg-green-600 text-white py-3 rounded-lg font-bold hover:bg-green-700">
+                                        📱 Pedir por WhatsApp
+                                    </button>
+                                </div>
+                            ` : ''}
+                        </div>
+                    </div>
+
+                    <!-- Image Zoom Modal -->
+                    <div id="zoomModal" class="hidden fixed inset-0 bg-black bg-opacity-90 z-50 flex items-center justify-center p-4" onclick="closeZoom()">
+                        <img id="zoomedImage" src="" class="max-w-full max-h-full object-contain">
+                    </div>
+                </div>
+            `;
+        }
+
+        function getFilteredProducts() {
+            let filtered = catalogData.products.filter(p => {
+                const matchesSearch = !searchTerm || p.name.toLowerCase().includes(searchTerm.toLowerCase());
+                const matchesSection = !currentSection || p.section == currentSection;
+                const matchesSubsection = !currentSubsection || p.subsection === currentSubsection;
+                return matchesSearch && matchesSection && matchesSubsection;
+            });
+            
+            // Si no hay filtros activos, organizar por secciones
+            if (!currentSection && !searchTerm) {
+                const organized = [];
+                const productsPerSection = 4; // Mostrar 4 productos de cada sección
+                
+                catalogData.sections.forEach(section => {
+                    const sectionProducts = filtered.filter(p => p.section == section.id).slice(0, productsPerSection);
+                    organized.push(...sectionProducts);
+                });
+                
+                return organized;
+            }
+            
+            return filtered;
+        }
+
+        function handleSearch(e) {
+            searchTerm = e.target.value;
+            render();
+        }
+
+        function filterSection(sectionId) {
+            currentSection = sectionId;
+            currentSubsection = null;
+            render();
+        }
+
+        function filterSubsection(subsection) {
+            currentSubsection = subsection;
+            render();
+        }
+
+        let selectedVariants = {}; // Guardar variante seleccionada por producto
+
+        function changeVariant(productId, variantIndex) {
+            console.log('🔵 changeVariant llamada:', productId, variantIndex);
+            
+            const product = catalogData.products.find(p => p.id === productId);
+            console.log('🔵 Producto encontrado:', product);
+            
+            const imgId = 'productImg' + productId;
+            const btnId = 'addBtn' + productId;
+            const selectId = 'variantSelect' + productId;
+            
+            console.log('🔵 Buscando elemento con ID:', imgId);
+            
+            if (!variantIndex || variantIndex === '') {
+                console.log('🔵 Sin variante - volviendo a original');
+                selectedVariants[productId] = null;
+                
+                const img = document.getElementById(imgId);
+                console.log('🔵 Elemento img:', img);
+                if (img) {
+                    img.src = product.image;
+                    img.setAttribute('referrerpolicy', 'no-referrer');
+                    img.setAttribute('crossorigin', 'anonymous');
+                    console.log('🔵 Imagen restaurada a:', product.image);
+                }
+                
+                const btn = document.getElementById(btnId);
+                if (btn) {
+                    btn.disabled = true;
+                    btn.className = 'w-full bg-gray-300 text-gray-500 py-2 rounded text-sm cursor-not-allowed';
+                    btn.textContent = 'Selecciona una variante';
+                }
+                return;
+            }
+
+            const idx = parseInt(variantIndex);
+            const variant = product.variants[idx];
+            console.log('🔵 Variante seleccionada:', variant);
+            selectedVariants[productId] = variant;
+            
+            const img = document.getElementById(imgId);
+            console.log('🔵 Elemento img para cambio:', img);
+            
+            if (img) {
+                const newImageSrc = (variant.image && variant.image.trim() !== '') ? variant.image : product.image;
+                console.log('🔵 Nueva imagen src:', newImageSrc);
+                console.log('🔵 Imagen anterior:', img.src);
+                
+                img.setAttribute('referrerpolicy', 'no-referrer');
+                img.setAttribute('crossorigin', 'anonymous');
+                
+                img.src = newImageSrc;
+                
+                console.log('✅ Imagen cambiada a:', img.src);
+            } else {
+                console.log('❌ No se encontró elemento img con ID:', imgId);
+            }
+            
+            const btn = document.getElementById(btnId);
+            if (btn) {
+                btn.disabled = false;
+                btn.className = 'w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700 text-sm';
+                btn.textContent = 'Agregar al carrito';
+            }
+        }
+
+        function addToCartWithVariant(productId) {
+            const product = catalogData.products.find(p => p.id === productId);
+            const variant = selectedVariants[productId];
+            
+            if (!variant) {
+                alert('Por favor selecciona una variante');
+                return;
+            }
+            
+            const variantName = variant.name || variant;
+            const variantImage = variant.image || product.image;
+            
+            cart.push({
+                id: Date.now(),
+                name: product.name,
+                price: product.price,
+                image: variantImage,
+                variant: variantName
+            });
+            
+            // Reset selección
+            const selectId = 'variantSelect' + productId;
+            const select = document.getElementById(selectId);
+            if (select) select.value = '';
+            
+            const imgId = 'productImg' + productId;
+            const img = document.getElementById(imgId);
+            if (img) img.src = product.image;
+            
+            selectedVariants[productId] = null;
+            
+            render();
+            alert('Producto agregado al carrito');
+        }
+
+        function addToCartSimple(product) {
+            cart.push({
+                id: Date.now(),
+                name: product.name,
+                price: product.price,
+                image: product.image,
+                variant: null
+            });
+            render();
+            alert('Producto agregado al carrito');
+        }
+
+        function removeFromCart(index) {
+            cart.splice(index, 1);
+            render();
+            toggleCart();
+        }
+
+        function toggleCart() {
+            const modal = document.getElementById('cartModal');
+            modal.classList.toggle('hidden');
+        }
+
+        function zoomImage(imageSrc) {
+            const modal = document.getElementById('zoomModal');
+            const img = document.getElementById('zoomedImage');
+            img.src = imageSrc;
+            modal.classList.remove('hidden');
+        }
+
+        function closeZoom() {
+            document.getElementById('zoomModal').classList.add('hidden');
+        }
+
+        function sendWhatsApp() {
+            let message = '*Mi Pedido:*\n\n';
+            const total = cart.reduce((sum, item) => sum + item.price, 0);
+            
+            cart.forEach((item, index) => {
+                message += `${index + 1}. ${item.name}`;
+                if (item.variant) message += ` - ${item.variant}`;
+                message += ` - $${item.price.toFixed(2)}\n`;
+            });
+            
+            message += `\n*Total: $${total.toFixed(2)}*`;
+            
+            window.open(`https://wa.me/${catalogData.whatsapp}?text=${encodeURIComponent(message)}`, '_blank');
+        }
+
+        render();
+    </script>
+</body>
+</html>
